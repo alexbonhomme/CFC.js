@@ -40,7 +40,8 @@
           </ul>
           <div class="navbar-form navbar-right" role="form">
             <div class="form-group">
-              <button type="button" class="btn btn-warning" btn-checkbox ng-model="bClusters"  ng-change="toggleClusters()">Clusters</button>
+              <button id="btn-bicycles" type="button" class="btn btn-success" btn-checkbox ng-model="map.layers.overlays.opencyclemap.visible">Cycle paths</button>
+              <button id="btn-clusters" type="button" class="btn btn-warning" btn-checkbox ng-model="map.layers.overlays.clustersmap.visible">Clusters</button>
               <select id="select-user" class="form-control" ng-model="userId" ng-options="u.user as u.user for u in users" ng-change="getCarbonFootprint()">
                 <option value="">-- Please select an user --</option>
               </select>
@@ -160,10 +161,10 @@
 
         <!-- Leaflet map visualization -->
         <div id="map-anchor" class="row">
-          <div id="map"></div>
+          <leaflet id="map" defaults="map" layers="map.layers" paths="map.paths" markers="map.markers" center="map.center"></leaflet>
           <div class="hresize"></div>
         </div>
-        
+
         <!-- Range slider -->
         <div class="row">
           <div id="slider" ng-model="dates" cfc-dateslider></div>
@@ -211,6 +212,7 @@
     
     <script src="/libs/angular-1.2.10.min.js"></script>
     <script src="/libs/ui-bootstrap-buttons-tpls-0.10.0.min.js"></script>
+    <script src="/libs/angular-leaflet-directive.min.js"></script>
     <script src="/controller.js"></script>
   </body>
 </html>

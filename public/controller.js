@@ -1,4 +1,4 @@
-angular.module('CarbonFootprintCalculator', ['ui.bootstrap.buttons'])
+angular.module('CarbonFootprintCalculator', ['ui.bootstrap.buttons', 'leaflet-directive'])
 
 .controller('mainController', function($scope, $http) {
 
@@ -7,24 +7,47 @@ angular.module('CarbonFootprintCalculator', ['ui.bootstrap.buttons'])
 	/**
 	 * Set up the map
 	 */
-	var map = new L.Map('map');
-
-	// create the tile layer with correct attribution
-	var osmUrl='http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-	var osmAttrib='Map data © OpenStreetMap contributors';
-	var osm = new L.TileLayer(osmUrl, {minZoom: 8, maxZoom: 20, attribution: osmAttrib});   
-
-	// start the map in Lille center
-	map.setView(new L.LatLng(50.6372, 3.0633), 12);
-	map.addLayer(osm);
-
-	/**
-	 * Init cluster variable
-	 */
-	map._markersClusterGroup = new L.MarkerClusterGroup({
-		singleMarkerMode: true,
-		maxClusterRadius: 40
-	});
+	$scope.map = {
+        center: {
+	        lat: 50.6372,
+	        lng: 3.0633,
+	        zoom: 14
+	    },
+	    layers: {
+            baselayers: {
+                openstreetmap: {
+                    name: 'OpenStreetMap',
+                    url: 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    type: 'xyz',
+                    layerParams: {
+                      attribution: 'Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }
+                }
+            },
+            overlays: {
+                opencyclemap: {
+                    name: 'OpenCycleMap',
+                    url: 'http://{s}.tile.opencyclemap.org/cycle/{z}/{x}/{y}.png',
+                    type: 'xyz',
+                    visible: false,
+                    layerParams: {
+                      attribution: 'Map data &copy; <a href="http://www.opencyclemap.org">OpenCycleMap</a> contributors'
+                    }
+                },
+                clustersmap: {
+                	name: 'Clusters',
+                	type: 'markercluster',
+                	visible: false,
+                	layerOptions: {
+                		singleMarkerMode: true,
+						maxClusterRadius: 40
+                	}
+                }
+            }
+        },
+        paths: {},
+        markers: {}
+    };
 
 	/**
 	 * Update user list.
@@ -124,14 +147,9 @@ angular.module('CarbonFootprintCalculator', ['ui.bootstrap.buttons'])
 				$scope.carbonFootprint = totalEmission.toFixed(1) + ' kg eq. CO₂';
 				$scope.carbonFootprintPerKm = (totalEmission/totalDistance).toFixed(2) + ' kg eq. CO₂ per km';
 
-				// Rides layer
-				clearMap(map);
-				addContent(map, data);
+				// Rides layer + clusters layer
+				$scope.addContent();
 
-				// Cluster layer
-				if( $scope.bClusters ) {
-					addClusters(map, data);
-				}
 			})
 			.error(function(data) {
 				console.log('Error: ' + data);
@@ -139,19 +157,63 @@ angular.module('CarbonFootprintCalculator', ['ui.bootstrap.buttons'])
 	};
 
 	/**
-	 * Builds of clears the clusters layer
-	 * /!\ Should be called BEFORE getCarbonFootprint(), because of $scope.rides /!\
+	 * Look over the rides list and draw rides
 	 */
-	$scope.toggleClusters = function() {
-		if($scope.rides == undefined) {
-			return;
-		}
+	$scope.addContent = function() {
+		$scope.map.paths = {};
+		$scope.map.markers = {};
 
-		if ($scope.bClusters) {
-			addClusters(map, $scope.rides);
-		} else {
-			map._markersClusterGroup.clearLayers();
-		}
+		var markerId = 0;
+		$scope.rides.forEach(function(ride, idx) {
+			/*
+			 * Build a array of all position and make markers 
+			 * to give some information about the current position (speed, etc.)
+			 */
+			var latLonArray = [];
+			ride.coordinates.forEach(function(coord, index) {
+				var latlng = L.latLng(coord.latitude, coord.longitude);
+
+				latLonArray.push( latlng );
+
+				// Add markers to clusters map
+				$scope.map.markers[markerId] = {
+					layer: 'clustersmap',
+					lat: latlng.lat, 
+					lng: latlng.lng
+				};
+				markerId++;
+			});
+
+			// define path color
+			var color;
+			switch(ride.type) {
+			case 'train':
+				color = 'blue'; break;
+			case 'car':
+				color = 'red'; break;
+			case 'walking':
+				color = 'green'; break;
+			default:
+				color = 'gray';
+			}
+
+			/*
+			 * Draw line between each point
+			 */
+			 var message = 'Total distance: '+ ride.distance.toFixed(3) +' km<br>\
+						    Average speed: '+ ride.averageSpeed.toFixed(1) +' km/h<br>\
+						    Average acceleration: '+ ride.averageAcc.toFixed(3) +' m/s&sup2;<br>\
+						    Max speed: '+ ride.maxSpeed.toFixed(1) +' km/h<br>\
+						    Carbon Footprint: '+ ride.emission.toFixed(1) +' Kg eq. CO₂';
+			$scope.map.paths[idx] = {
+				color: color,
+				weight: 5,
+				opacity: 0.6,
+				latlngs: latLonArray,
+				message: message
+			};
+			
+		});
 	};
 })
 
@@ -203,82 +265,3 @@ angular.module('CarbonFootprintCalculator', ['ui.bootstrap.buttons'])
         }
     };
 });
-
-/**
- * Clear all rides off the map
- */
-function clearMap(m) {
-    for(i in m._layers) {
-        if(m._layers[i]._path == undefined) {
-        	continue;   
-        }
-
-        try {
-            m.removeLayer(m._layers[i]);
-        } catch(e) {
-            console.log("problem with " + e + m._layers[i]);
-        }
-    }
-}
-
-/**
- * Look over the rides list and draw rides
- */
-function addContent(map, rides) {
-	rides.forEach(function(ride) {
-		/*
-		 * Build a array of all position and make markers 
-		 * to give some information about the current position (speed, etc.)
-		 */
-		var latLonArray = [];
-		ride.coordinates.forEach(function(coord, index) {
-			latLonArray.push( L.latLng(coord.latitude, coord.longitude) );
-		});
-
-		// define path color
-		var color;
-		switch(ride.type) {
-		case 'train':
-			color = 'blue'; break;
-		case 'car':
-			color = 'red'; break;
-		case 'walking':
-			color = 'green'; break;
-		default:
-			color = 'gray';
-		}
-
-		/*
-		 * Draw line between each point
-		 */
-		var p = L.polyline(latLonArray, {color: color})
-				 .addTo(map)
-		  		 .bindPopup('Total distance: '+ ride.distance.toFixed(3) +' km<br>\
-		    Average speed: '+ ride.averageSpeed.toFixed(1) +' km/h<br>\
-		    Average acceleration: '+ ride.averageAcc.toFixed(3) +' m/s&sup2;<br>\
-		    Max speed: '+ ride.maxSpeed.toFixed(1) +' km/h<br>\
-		    Carbon Footprint: '+ ride.emission.toFixed(1) +' Kg eq. CO₂');
-	});
-}
-
-/**
- * Looks over each rides and each coordinate to build a cluster layout.
- * This pretty expensive, but simplest this way
- */
-function addClusters(map, rides) {
-	map._markersClusterGroup.clearLayers();
-	//map._markersClusterGroup = new L.MarkerClusterGroup();
-
-	rides.forEach(function(ride) {
-
-		// Add marker for each coordinates
-		ride.coordinates.forEach(function(coord, index) {
-			var latLng = L.latLng(coord.latitude, coord.longitude)
-
-			map._markersClusterGroup.addLayer(new L.Marker(latLng));
-		});
-	});
-
-	// add custer layer
-	map.addLayer(map._markersClusterGroup);
-}
